@@ -1,0 +1,39 @@
+# ─── Secrets ───────────────────────────────────────────────
+.env
+.env.local
+.streamlit/secrets.toml
+
+# ─── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ─── Real (private) data — never commit ────────────────────
+# Only sample_data/ is allowed to be committed.
+real_data/
+*.real.xlsx
+*.private.xlsx
+
+# ─── Generated outputs that may contain customer-specific text ─
+# AI- Output/ is kept in the repo as a demo, but if you regenerate
+# locally against private data you should not push the regenerated
+# files back upstream.
+# (Uncomment the next line if you want to exclude them entirely.)
+# AI- Output/
+
+# ─── OS / editor noise ────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ─── Build artifacts ──────────────────────────────────────
+build/
+dist/
+*.egg-info/
