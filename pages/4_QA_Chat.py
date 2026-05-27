@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
+from llm_client import SEED_QUESTIONS_EN, ask_qa
 from pdf_export import chat_to_pdf
 from prompts import SYSTEM_PROMPT_QA
 from qa_context import build_full_context
@@ -38,17 +39,8 @@ sidebar_branding()
 from data_sources import require_master_or_stop
 require_master_or_stop()
 
-MODEL = "claude-haiku-4-5"
-MAX_TOKENS = 2000
-
 SEED_QUESTIONS = {
-    "en": [
-        "Give me a summary of FY2025-26",
-        "Which months had losses or data integrity concerns?",
-        "What was our best month and why?",
-        "How did revenue trend across quarters?",
-        "Compare Q1 (Apr-Jun) vs Q4 (Jan-Mar)",
-    ],
+    "en": SEED_QUESTIONS_EN,
     "hi": [
         "FY2025-26 का सारांश दीजिए",
         "किन महीनों में नुकसान या डेटा समस्याएँ थीं?",
@@ -61,19 +53,6 @@ SEED_QUESTIONS = {
 
 def current_seeds():
     return SEED_QUESTIONS.get(get_lang(), SEED_QUESTIONS["en"])
-
-
-OUTPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "answer": {"type": "string"},
-        "next_questions": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["answer", "next_questions"],
-    "additionalProperties": False,
-}
-
-QA_SESSIONS_DIR = Path(__file__).parent.parent / "qa_sessions"
 
 
 @st.cache_data
@@ -166,28 +145,15 @@ st.markdown(
 def ask_llm(question: str):
     st.session_state.messages.append({"role": "user", "content": question})
     try:
-        client = anthropic.Anthropic()
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=[{
-                "type": "text",
-                "text": system_prompt,
-                "cache_control": {"type": "ephemeral"},
-            }],
-            messages=st.session_state.messages,
-            output_config={"format": {"type": "json_schema", "schema": OUTPUT_SCHEMA}},
-        )
-        text = "".join(b.text for b in response.content if b.type == "text")
-        data = json.loads(text)
+        data, usage = ask_qa(system_prompt, st.session_state.messages)
         answer = data.get("answer", "(no answer)")
         next_qs = data.get("next_questions") or []
         st.session_state.messages.append({"role": "assistant", "content": answer})
         st.session_state.next_questions = next_qs[:5] if next_qs else current_seeds()
-        st.session_state.usage["input"] += response.usage.input_tokens
-        st.session_state.usage["output"] += response.usage.output_tokens
-        st.session_state.usage["cache_read"] += getattr(response.usage, "cache_read_input_tokens", 0) or 0
-        st.session_state.usage["cache_write"] += getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+        st.session_state.usage["input"] += usage["input_tokens"]
+        st.session_state.usage["output"] += usage["output_tokens"]
+        st.session_state.usage["cache_read"] += usage["cache_read_input_tokens"]
+        st.session_state.usage["cache_write"] += usage["cache_creation_input_tokens"]
     except anthropic.AuthenticationError:
         st.error(t("err_no_key"))
         st.session_state.messages.pop()

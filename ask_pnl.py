@@ -1,6 +1,4 @@
-import argparse
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +6,7 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 
+from llm_client import SEED_QUESTIONS_EN, ask_qa
 from prompts import SYSTEM_PROMPT_QA
 from qa_context import build_full_context
 
@@ -16,26 +15,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 SESSIONS_DIR = Path(__file__).parent / "qa_sessions"
-MODEL = "claude-haiku-4-5"
-MAX_TOKENS = 2000
-
-SEED_QUESTIONS = [
-    "Give me a summary of FY2025-26",
-    "Which months had losses or data integrity concerns?",
-    "What was our best month and why?",
-    "How did revenue trend across quarters?",
-    "Compare Q1 (Apr-Jun) vs Q4 (Jan-Mar)",
-]
-
-OUTPUT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "answer": {"type": "string"},
-        "next_questions": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["answer", "next_questions"],
-    "additionalProperties": False,
-}
+SEED_QUESTIONS = SEED_QUESTIONS_EN
 
 
 def _divider(char: str = "=", width: int = 64) -> str:
@@ -98,27 +78,8 @@ def save_session(transcript: list[str], total_in: int, total_out: int) -> Path |
     return out
 
 
-def call_llm(client, system_prompt: str, messages: list[dict]) -> tuple[dict, anthropic.types.Usage]:
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        system=[{
-            "type": "text",
-            "text": system_prompt,
-            "cache_control": {"type": "ephemeral"},
-        }],
-        messages=messages,
-        output_config={"format": {"type": "json_schema", "schema": OUTPUT_SCHEMA}},
-    )
-    text = "".join(b.text for b in response.content if b.type == "text")
-    data = json.loads(text)
-    return data, response.usage
-
-
 def main() -> int:
     load_dotenv(Path(__file__).parent / ".env", override=True)
-    parser = argparse.ArgumentParser(description="Guided P&L Q&A for ABC Fitness Club.")
-    parser.parse_args()
 
     print("Loading P&L context...")
     context, meta = build_full_context()
@@ -171,7 +132,7 @@ def main() -> int:
         messages.append({"role": "user", "content": question})
 
         try:
-            data, usage = call_llm(client, system_with_context, messages)
+            data, usage = ask_qa(system_with_context, messages, client=client)
         except anthropic.AuthenticationError:
             print("ERROR: Invalid or missing ANTHROPIC_API_KEY.", file=sys.stderr)
             return 2
@@ -188,14 +149,12 @@ def main() -> int:
 
         answer = data.get("answer", "(no answer returned)")
         next_qs = data.get("next_questions") or []
-        cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
-        cache_create = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        total_in += usage.input_tokens + cache_read + cache_create
-        total_out += usage.output_tokens
+        total_in += usage["total_input_tokens"]
+        total_out += usage["output_tokens"]
 
         print(f"\n{answer}\n")
-        print(f"  [tokens: uncached_in={usage.input_tokens}, cache_write={cache_create}, "
-              f"cache_read={cache_read}, out={usage.output_tokens}]")
+        print(f"  [tokens: uncached_in={usage['input_tokens']}, cache_write={usage['cache_creation_input_tokens']}, "
+              f"cache_read={usage['cache_read_input_tokens']}, out={usage['output_tokens']}]")
 
         messages.append({"role": "assistant", "content": answer})
         transcript.append(f"\n## Q: {question}\n\n{answer}")
