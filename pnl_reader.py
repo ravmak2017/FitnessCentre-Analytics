@@ -16,16 +16,15 @@ COLS = {
     "month": 1,
     "ultra_rev": 2,
     "premium_rev": 3,
+    # col 4 = Total Rev (formula in sheet, recomputed in code)
     "salary": 5,
     "electricity": 6,
     "repair": 7,
     "grocery": 8,
-    "mandir": 9,
-    "paytm": 10,
-    "misc": 11,
-    "diesel": 12,
+    "diesel": 9,
+    # col 10 = Total Exp (formula), col 11 = Profit (formula), col 12 = GM% (formula)
 }
-EXPENSE_KEYS = ["salary", "electricity", "repair", "grocery", "mandir", "paytm", "misc", "diesel"]
+EXPENSE_KEYS = ["salary", "electricity", "repair", "grocery", "diesel"]
 
 
 @dataclass
@@ -37,10 +36,11 @@ class MonthlyPnL:
     electricity: float
     repair: float
     grocery: float
-    mandir: float
-    paytm: float
-    misc: float
     diesel: float
+    # Deprecated columns kept for backwards-compat with other modules; always 0.
+    mandir: float = 0.0
+    paytm: float = 0.0
+    misc: float = 0.0
 
     @property
     def total_rev(self) -> float:
@@ -96,9 +96,6 @@ def read_pnl(path: Path | None = None) -> list[MonthlyPnL]:
             electricity=_num(ws.cell(r, COLS["electricity"]).value),
             repair=_num(ws.cell(r, COLS["repair"]).value),
             grocery=_num(ws.cell(r, COLS["grocery"]).value),
-            mandir=_num(ws.cell(r, COLS["mandir"]).value),
-            paytm=_num(ws.cell(r, COLS["paytm"]).value),
-            misc=_num(ws.cell(r, COLS["misc"]).value),
             diesel=_num(ws.cell(r, COLS["diesel"]).value),
         ))
     months.sort(key=lambda m: m.month)
